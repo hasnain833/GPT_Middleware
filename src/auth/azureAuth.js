@@ -54,7 +54,6 @@ class AzureAuthService {
             // Check if current token is still valid (with 5-minute buffer)
             if (this.accessToken && this.tokenExpiry && 
                 Date.now() < (this.tokenExpiry - 5 * 60 * 1000)) {
-                logger.debug('Using cached access token');
                 return this.accessToken;
             }
 
@@ -62,10 +61,9 @@ class AzureAuthService {
                 scopes: ['https://graph.microsoft.com/.default'],
             };
 
-            logger.debug('Acquiring new access token from Azure AD');
             const response = await this.clientApp.acquireTokenByClientCredential(clientCredentialRequest);
 
-            if (!response || !response.accessToken) {
+            if (!response?.accessToken) {
                 throw new Error('Failed to acquire access token');
             }
 
@@ -77,7 +75,7 @@ class AzureAuthService {
             return this.accessToken;
 
         } catch (error) {
-            logger.error('Failed to acquire access token:', error);
+            logger.error('Failed to acquire access token:', error.message);
             throw new Error(`Authentication failed: ${error.message}`);
         }
     }

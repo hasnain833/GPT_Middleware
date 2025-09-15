@@ -10,13 +10,12 @@ const router = express.Router();
 const excelController = require('../controllers/excelController');
 
 // Middleware
-const { ensureAuthenticated, validateApiKey, logAuthenticatedRequest } = require('../auth/middleware');
+const { ensureAuthenticated, logAuthenticatedRequest } = require('../auth/middleware');
 const { validateRequest, validateRangeValuesCompatibility, sanitizeRequest } = require('../middleware/validation');
 const { writeLimiter, generalLimiter } = require('../middleware/rateLimiter');
 
 // Apply common middleware to all routes
 router.use(sanitizeRequest);
-router.use(validateApiKey);
 router.use(ensureAuthenticated);
 router.use(logAuthenticatedRequest);
 router.use(generalLimiter);

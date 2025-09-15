@@ -10,7 +10,8 @@ const auditService = require('./auditService');
 class GraphService {
     constructor() {
         this.baseURL = process.env.GRAPH_API_BASE_URL || 'https://graph.microsoft.com/v1.0';
-        this.timeout = 30000; // 30 seconds timeout
+        this.timeout = 15000; // Reduced to 15 seconds
+        this.retryAttempts = 2;
     }
 
     /**
@@ -39,13 +40,24 @@ class GraphService {
         try {
             const client = this.createAuthenticatedClient(accessToken);
             
-            // Get workbooks from OneDrive and SharePoint
-            const [oneDriveResponse, sitesResponse] = await Promise.allSettled([
-                client.get('/me/drive/root/search(q=\'.xlsx\')?$filter=file ne null'),
-                client.get('/sites?search=*')
-            ]);
+            // Optimized: Get workbooks from OneDrive only initially
+            const response = await client.get('/me/drive/root/search(q=\'.xlsx\')?$filter=file ne null&$top=50');
+            
+            const workbooks = response.data.value.map(item => ({
+                id: item.id,
+                name: item.name,
+                webUrl: item.webUrl,
+                parentReference: item.parentReference,
+                lastModifiedDateTime: item.lastModifiedDateTime,
+                size: item.size
+            }));
 
-            let workbooks = [];
+            auditService.logSystemEvent({
+                event: 'WORKBOOKS_RETRIEVED',
+                details: { count: workbooks.length, user: auditContext.user }
+            });
+
+            return workbooks;
 
             // Process OneDrive workbooks
             if (oneDriveResponse.status === 'fulfilled') {

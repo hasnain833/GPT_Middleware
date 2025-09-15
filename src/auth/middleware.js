@@ -30,31 +30,23 @@ const ensureAuthenticated = async (req, res, next) => {
     }
 };
 
-/**
- * Middleware to validate API key (optional additional security layer)
- * Disabled for this implementation - Azure AD authentication is sufficient
- */
-const validateApiKey = (req, res, next) => {
-    // Skip API key validation - Azure AD provides sufficient security
-    next();
-};
 
 /**
  * Middleware to log authenticated requests
  */
 const logAuthenticatedRequest = (req, res, next) => {
-    logger.info('Authenticated request', {
-        method: req.method,
-        url: req.originalUrl,
-        ip: req.ip,
-        userAgent: req.get('User-Agent'),
-        tokenValid: req.tokenInfo?.isValid || false
-    });
+    if (logger.isLevelEnabled('info')) {
+        logger.info('Authenticated request', {
+            method: req.method,
+            url: req.originalUrl,
+            ip: req.ip,
+            tokenValid: req.tokenInfo?.isValid || false
+        });
+    }
     next();
 };
 
 module.exports = {
     ensureAuthenticated,
-    validateApiKey,
     logAuthenticatedRequest
 };

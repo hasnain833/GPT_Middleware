@@ -178,43 +178,33 @@ const validateRangeValuesCompatibility = (req, res, next) => {
     }
 
     try {
-        // Parse range to get expected dimensions
         const rangeParts = range.split(':');
         if (rangeParts.length === 2) {
-            // Range like A1:C3
             const startCell = rangeParts[0];
             const endCell = rangeParts[1];
             
-            // Extract column and row numbers (simplified parsing)
-            const startCol = startCell.match(/[A-Z]+/)[0];
-            const startRow = parseInt(startCell.match(/\d+/)[0]);
-            const endCol = endCell.match(/[A-Z]+/)[0];
-            const endRow = parseInt(endCell.match(/\d+/)[0]);
+            const startColMatch = startCell.match(/[A-Z]+/);
+            const startRowMatch = startCell.match(/\d+/);
+            const endColMatch = endCell.match(/[A-Z]+/);
+            const endRowMatch = endCell.match(/\d+/);
             
-            const expectedRows = endRow - startRow + 1;
-            const expectedCols = columnToNumber(endCol) - columnToNumber(startCol) + 1;
-            
-            if (values.length !== expectedRows) {
-                return res.status(400).json({
-                    error: 'Range-values mismatch',
-                    message: `Range expects ${expectedRows} rows, but ${values.length} rows provided`,
-                    timestamp: new Date().toISOString()
-                });
-            }
-            
-            if (values[0] && values[0].length !== expectedCols) {
-                return res.status(400).json({
-                    error: 'Range-values mismatch',
-                    message: `Range expects ${expectedCols} columns, but ${values[0].length} columns provided`,
-                    timestamp: new Date().toISOString()
-                });
+            if (startColMatch && startRowMatch && endColMatch && endRowMatch) {
+                const expectedRows = parseInt(endRowMatch[0]) - parseInt(startRowMatch[0]) + 1;
+                const expectedCols = columnToNumber(endColMatch[0]) - columnToNumber(startColMatch[0]) + 1;
+                
+                if (values.length !== expectedRows || (values[0] && values[0].length !== expectedCols)) {
+                    return res.status(400).json({
+                        error: 'Range-values mismatch',
+                        message: `Range expects ${expectedRows}x${expectedCols}, got ${values.length}x${values[0]?.length || 0}`,
+                        timestamp: new Date().toISOString()
+                    });
+                }
             }
         }
         
         next();
     } catch (error) {
-        logger.warn('Could not validate range-values compatibility:', error.message);
-        // Continue anyway - let Graph API handle the validation
+        // Continue - let Graph API handle validation
         next();
     }
 };
@@ -242,8 +232,8 @@ const sanitizeInput = (input) => {
         return input;
     }
     
-    // Remove potentially dangerous characters
-    return input.replace(/[<>\"'%;()&+]/g, '');
+    // Remove potentially dangerous characters but preserve Excel formulas
+    return input.replace(/[<>"';]/g, '');
 };
 
 /**

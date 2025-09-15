@@ -45,14 +45,8 @@ class Server {
 
         // Security middleware
         this.app.use(helmet({
-            contentSecurityPolicy: {
-                directives: {
-                    defaultSrc: ["'self'"],
-                    styleSrc: ["'self'", "'unsafe-inline'"],
-                    scriptSrc: ["'self'"],
-                    imgSrc: ["'self'", "data:", "https:"],
-                },
-            },
+            contentSecurityPolicy: false, // Simplified for API
+            crossOriginEmbedderPolicy: false,
             hsts: {
                 maxAge: 31536000,
                 includeSubDomains: true,
@@ -62,13 +56,9 @@ class Server {
 
         // CORS configuration
         const corsOptions = {
-            origin: process.env.ALLOWED_ORIGINS ? 
-                process.env.ALLOWED_ORIGINS.split(',') : 
-                ['http://localhost:3000'],
-            methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-            allowedHeaders: ['Content-Type', 'Authorization', 'x-api-key', 'x-user-id', 'x-user-type'],
+            origin: process.env.ALLOWED_ORIGINS?.split(',').map(origin => origin.trim()) || ['http://localhost:3000'],
             credentials: true,
-            maxAge: 86400 // 24 hours
+            optionsSuccessStatus: 200
         };
         this.app.use(cors(corsOptions));
 

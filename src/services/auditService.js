@@ -23,17 +23,11 @@ class AuditService {
             operation: 'READ',
             user: params.user || 'system',
             workbookId: params.workbookId,
-            workbookName: params.workbookName,
             worksheetId: params.worksheetId,
-            worksheetName: params.worksheetName,
             range: params.range,
-            table: params.table,
-            cellCount: params.cellCount,
             success: params.success,
-            error: params.error,
             requestId: params.requestId,
-            ipAddress: params.ipAddress,
-            userAgent: params.userAgent
+            ipAddress: params.ipAddress
         };
 
         this.auditLogger.info('Excel read operation', auditEntry);
