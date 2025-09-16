@@ -1,25 +1,26 @@
 # Excel GPT Middleware
 
-A secure middleware solution that connects custom GPTs to Excel files stored on SharePoint/OneDrive using Microsoft Graph API with Azure AD authentication.
+A secure, enterprise-grade middleware solution that connects custom GPTs to Excel files stored on SharePoint/OneDrive using Microsoft Graph API with Azure AD authentication.
 
 ## ✅ Status: Production Ready
 
 This middleware is fully functional and tested with:
 - ✅ Azure AD Client Credentials authentication
-- ✅ Microsoft Graph API integration
-- ✅ SharePoint/OneDrive read/write permissions
+- ✅ Microsoft Graph API integration with SharePoint site discovery
+- ✅ Role-based range protection for secure GPT operations
+- ✅ Enterprise audit logging with complete operation tracking
 - ✅ Comprehensive error handling and validation
 - ✅ Rate limiting and security measures
-- ✅ Audit logging and monitoring
 
-## Features
+## 🚀 Enterprise Features
 
-- **Azure AD Authentication**: Automatic service-to-service authentication
-- **Excel Integration**: Full read/write access to Excel ranges and tables
-- **SharePoint/OneDrive Access**: Works with organizational files
-- **Security**: Built-in rate limiting, validation, and audit logging
-- **Error Handling**: Comprehensive error responses and logging
-- **Production Ready**: Includes monitoring, health checks, and graceful shutdown
+- **🔐 Azure AD Authentication**: Automatic service-to-service authentication
+- **📊 Excel Integration**: Full read/write access to Excel ranges and tables
+- **🏢 SharePoint Discovery**: Automatic site and drive enumeration
+- **🔒 Range Protection**: Configurable allowed/locked ranges for GPT safety
+- **📋 Audit Logging**: Complete operation history with pre/post values
+- **🛡️ Security**: Built-in rate limiting, validation, and error handling
+- **📈 Production Ready**: Monitoring, health checks, and graceful shutdown
 
 ## Project Structure
 
@@ -87,18 +88,21 @@ excel-gpt-middleware/
 
 ## API Endpoints
 
+### Authentication
+All endpoints require authentication via Azure AD Client Credentials Flow.
+
 ### Excel Operations
-- `GET /api/excel/workbooks` - List accessible Excel workbooks
+- `GET /api/excel/workbooks` - List accessible workbooks from SharePoint
 - `GET /api/excel/worksheets` - Get worksheets in a workbook
 - `POST /api/excel/read` - Read data from Excel ranges
-- `POST /api/excel/write` - Write data to Excel ranges
-- `POST /api/excel/read-table` - Read data from Excel tables
-- `POST /api/excel/add-table-rows` - Add rows to Excel tables
+- `POST /api/excel/write` - Write data to Excel ranges (🔒 range-protected)
+- `POST /api/excel/read-table` - Read Excel table data
+- `POST /api/excel/add-table-rows` - Add rows to Excel tables (🔒 range-protected)
 - `POST /api/excel/batch` - Perform batch operations
 
-### Health & Monitoring
-- `GET /health` - Basic health check
-- `GET /health/detailed` - Detailed system status
+### Monitoring & Audit
+- `GET /health` - Health check endpoint
+- `GET /api/excel/logs` - Get audit logs with filtering
 - `GET /api/docs` - API documentation
 
 ## Documentation

@@ -12,12 +12,15 @@ class HealthController {
      * Basic health check
      */
     basicHealth = catchAsync(async (req, res) => {
-        res.status(200).json({
-            status: 'healthy',
-            service: 'excel-gpt-middleware',
-            timestamp: new Date().toISOString(),
-            uptime: process.uptime(),
-            version: process.env.npm_package_version || '1.0.0'
+        res.json({
+            status: 'success',
+            data: {
+                health: 'healthy',
+                service: 'excel-gpt-middleware',
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime(),
+                version: process.env.npm_package_version || '1.0.0'
+            }
         });
     });
 
@@ -70,17 +73,20 @@ class HealthController {
                           overallStatus === 'degraded' ? 200 : 503;
 
         res.status(statusCode).json({
-            status: overallStatus,
-            service: 'excel-gpt-middleware',
-            timestamp: new Date().toISOString(),
-            uptime: process.uptime(),
-            version: process.env.npm_package_version || '1.0.0',
-            checks: healthChecks,
-            system: {
-                memory: memoryUsageMB,
-                nodeVersion: process.version,
-                platform: process.platform,
-                arch: process.arch
+            status: overallStatus === 'healthy' ? 'success' : 'error',
+            data: {
+                health: overallStatus,
+                service: 'excel-gpt-middleware',
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime(),
+                version: process.env.npm_package_version || '1.0.0',
+                checks: healthChecks,
+                system: {
+                    memory: memoryUsageMB,
+                    nodeVersion: process.version,
+                    platform: process.platform,
+                    arch: process.arch
+                }
             }
         });
     });
@@ -98,15 +104,21 @@ class HealthController {
                 await azureAuth.getAccessToken();
             }
 
-            res.status(200).json({
-                status: 'ready',
-                timestamp: new Date().toISOString()
+            res.json({
+                status: 'success',
+                data: {
+                    readiness: 'ready',
+                    timestamp: new Date().toISOString()
+                }
             });
         } catch (error) {
             logger.error('Readiness check failed:', error);
             res.status(503).json({
-                status: 'not ready',
-                error: 'Authentication service unavailable',
+                status: 'error',
+                error: {
+                    code: 503,
+                    message: 'Authentication service unavailable'
+                },
                 timestamp: new Date().toISOString()
             });
         }
@@ -117,9 +129,12 @@ class HealthController {
      */
     liveness = catchAsync(async (req, res) => {
         // Simple liveness check - if we can respond, we're alive
-        res.status(200).json({
-            status: 'alive',
-            timestamp: new Date().toISOString()
+        res.json({
+            status: 'success',
+            data: {
+                liveness: 'alive',
+                timestamp: new Date().toISOString()
+            }
         });
     });
 }

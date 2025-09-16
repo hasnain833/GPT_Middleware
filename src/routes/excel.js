@@ -13,6 +13,8 @@ const excelController = require('../controllers/excelController');
 const { ensureAuthenticated, logAuthenticatedRequest } = require('../auth/middleware');
 const { validateRequest, validateRangeValuesCompatibility, sanitizeRequest } = require('../middleware/validation');
 const { writeLimiter, generalLimiter } = require('../middleware/rateLimiter');
+const rangeValidator = require('../middleware/rangeValidator');
+const auditLogger = require('../middleware/auditLogger');
 
 // Apply common middleware to all routes
 router.use(sanitizeRequest);
@@ -54,6 +56,8 @@ router.post('/read',
  */
 router.post('/write', 
     writeLimiter, // Apply stricter rate limiting for write operations
+    auditLogger.middleware(), // Log all write operations
+    rangeValidator.middleware(), // Validate range permissions
     validateRequest('writeRange', 'body'),
     validateRangeValuesCompatibility,
     excelController.writeRange
@@ -76,6 +80,8 @@ router.post('/read-table',
  */
 router.post('/add-table-rows', 
     writeLimiter, // Apply stricter rate limiting for write operations
+    auditLogger.middleware(), // Log all write operations
+    rangeValidator.middleware(), // Validate range permissions
     validateRequest('addTableRows', 'body'),
     excelController.addTableRows
 );
@@ -105,7 +111,7 @@ router.get('/metadata',
  * @access Private
  */
 router.get('/logs', 
-    excelController.getLogs
+    require('../controllers/auditController').getAuditLogs
 );
 
 module.exports = router;

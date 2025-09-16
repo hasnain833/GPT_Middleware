@@ -83,9 +83,11 @@ const handleAuthError = (error) => {
 const sendErrorDev = (err, res) => {
     res.status(err.statusCode || 500).json({
         status: 'error',
-        error: err,
-        message: err.message,
-        stack: err.stack,
+        error: {
+            code: err.statusCode || 500,
+            message: err.message,
+            stack: err.stack
+        },
         timestamp: err.timestamp || new Date().toISOString()
     });
 };
@@ -100,19 +102,56 @@ const sendErrorProd = (err, res) => {
     if (err.isOperational) {
         res.status(err.statusCode || 500).json({
             status: 'error',
-            message: err.message,
+            error: {
+                code: err.statusCode || 500,
+                message: err.message
+            },
             timestamp: err.timestamp || new Date().toISOString()
         });
     } else {
         // Programming or other unknown error: don't leak error details
-        logger.error('Unknown error:', err);
+        logger.error('Unknown error:', {
+            message: err.message,
+            stack: err.stack,
+            name: err.name
+        });
         
         res.status(500).json({
             status: 'error',
-            message: 'Something went wrong!',
+            error: {
+                code: 500,
+                message: 'Internal server error'
+            },
             timestamp: new Date().toISOString()
         });
     }
+};
+
+/**
+ * Sanitize error object to prevent circular references
+ * @param {Object} err - Error object
+ * @returns {Object} Sanitized error data
+ */
+const sanitizeError = (err) => {
+    const sanitized = {
+        message: err.message || 'Unknown error',
+        name: err.name,
+        stack: err.stack
+    };
+
+    // Extract response data if it exists (from axios errors)
+    if (err.response?.data) {
+        sanitized.responseData = err.response.data;
+        sanitized.statusCode = err.response.status;
+    }
+
+    // Extract request info if it exists
+    if (err.config?.url) {
+        sanitized.requestUrl = err.config.url;
+        sanitized.requestMethod = err.config.method;
+    }
+
+    return sanitized;
 };
 
 /**
@@ -126,10 +165,10 @@ const globalErrorHandler = (err, req, res, next) => {
     let error = { ...err };
     error.message = err.message;
 
-    // Log error details
+    // Log sanitized error details (no circular references)
+    const sanitizedError = sanitizeError(err);
     logger.error('Error occurred:', {
-        message: err.message,
-        stack: err.stack,
+        ...sanitizedError,
         url: req.originalUrl,
         method: req.method,
         ip: req.ip,

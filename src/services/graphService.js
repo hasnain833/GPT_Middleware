@@ -59,51 +59,12 @@ class GraphService {
 
             return workbooks;
 
-            // Process OneDrive workbooks
-            if (oneDriveResponse.status === 'fulfilled') {
-                const oneDriveWorkbooks = oneDriveResponse.value.data.value
-                    .filter(item => item.file && item.name.endsWith('.xlsx'))
-                    .map(item => ({
-                        id: item.id,
-                        name: item.name,
-                        webUrl: item.webUrl,
-                        location: 'OneDrive',
-                        driveId: item.parentReference.driveId,
-                        lastModified: item.lastModifiedDateTime,
-                        size: item.size
-                    }));
-                workbooks = workbooks.concat(oneDriveWorkbooks);
-            }
-
-            // Process SharePoint sites (simplified - would need more complex logic for production)
-            if (sitesResponse.status === 'fulfilled') {
-                for (const site of sitesResponse.value.data.value.slice(0, 5)) { // Limit to first 5 sites
-                    try {
-                        const siteWorkbooks = await client.get(`/sites/${site.id}/drive/root/search(q='.xlsx')?$filter=file ne null`);
-                        const sharePointWorkbooks = siteWorkbooks.data.value
-                            .filter(item => item.file && item.name.endsWith('.xlsx'))
-                            .map(item => ({
-                                id: item.id,
-                                name: item.name,
-                                webUrl: item.webUrl,
-                                location: `SharePoint - ${site.displayName}`,
-                                driveId: item.parentReference.driveId,
-                                siteId: site.id,
-                                lastModified: item.lastModifiedDateTime,
-                                size: item.size
-                            }));
-                        workbooks = workbooks.concat(sharePointWorkbooks);
-                    } catch (siteError) {
-                        logger.warn(`Failed to get workbooks from site ${site.displayName}:`, siteError.message);
-                    }
-                }
-            }
-
-            logger.info(`Retrieved ${workbooks.length} workbooks`);
-            return workbooks;
-
         } catch (error) {
-            logger.error('Failed to get workbooks:', error);
+            logger.error('Failed to get workbooks:', {
+                message: error.message,
+                name: error.name,
+                stack: error.stack
+            });
             throw new Error(`Failed to retrieve workbooks: ${error.message}`);
         }
     }
