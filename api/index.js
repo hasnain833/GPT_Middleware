@@ -359,9 +359,9 @@ app.post("/excel/delete", async (req, res) => {
   }
 });
 
-// DELETE /excel/delete-sheet
+// POST /excel/delete-sheet
 // Body: { driveName, itemName, sheetName }
-app.delete("/excel/delete-sheet", async (req, res) => {
+app.post("/excel/delete-sheet", async (req, res) => {
   try {
     const { driveName, itemName, sheetName } = req.body || {};
     if (!driveName || !itemName || !sheetName) {
