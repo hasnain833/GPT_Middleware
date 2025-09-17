@@ -131,12 +131,45 @@ const itemCache = new Map();  // key: `${driveId}:${itemNameLower}` -> { id, ts 
 
 // Helpers to resolve driveId/itemId from names (case-insensitive)
 async function resolveSiteId() {
+  // 1) Preferred: explicit site ID
+  const SITE_ID = process.env.SHAREPOINT_SITE_ID || process.env.SITE_ID;
+  if (SITE_ID) {
+    return { id: SITE_ID };
+  }
+
+  // 2) SITE URL: e.g. https://tenant.sharepoint.com/sites/MySite
+  const SITE_URL = process.env.SHAREPOINT_SITE_URL || process.env.SITE_URL;
+  if (SITE_URL) {
+    try {
+      const u = new URL(SITE_URL);
+      const hostname = u.hostname; // tenant.sharepoint.com
+      // Expect path like /sites/MySite or /teams/MyTeam
+      const parts = u.pathname.split('/').filter(Boolean); // ["sites", "MySite"]
+      const collection = parts[0]; // sites | teams | etc
+      const siteName = parts.slice(1).join('/');
+      if (!hostname || !collection || !siteName) {
+        throw new Error('Invalid SHAREPOINT_SITE_URL format');
+      }
+      const url = `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(hostname)}:/${encodeURIComponent(collection)}/${encodeURIComponent(siteName)}?$select=id`;
+      return graphFetch(url, { method: "GET" });
+    } catch (e) {
+      throw new Error(`Invalid SHAREPOINT_SITE_URL. Expected like https://tenant.sharepoint.com/sites/SiteName. Details: ${e.message}`);
+    }
+  }
+
+  // 3) Legacy: hostname + site name
   const hostname = process.env.SHAREPOINT_HOSTNAME;
   const siteName = process.env.SHAREPOINT_SITE_NAME;
   if (!hostname || !siteName) {
-    throw new Error(
-      "Missing SHAREPOINT_HOSTNAME or SHAREPOINT_SITE_NAME env for site resolution"
-    );
+    const missing = [];
+    if (!SITE_ID) missing.push('SHAREPOINT_SITE_ID');
+    if (!SITE_URL) missing.push('SHAREPOINT_SITE_URL');
+    if (!hostname) missing.push('SHAREPOINT_HOSTNAME');
+    if (!siteName) missing.push('SHAREPOINT_SITE_NAME');
+    const msg = `Missing SharePoint site configuration. Set one of: (1) SHAREPOINT_SITE_ID, or (2) SHAREPOINT_SITE_URL (e.g., https://tenant.sharepoint.com/sites/SiteName), or (3) SHAREPOINT_HOSTNAME + SHAREPOINT_SITE_NAME. Missing: ${missing.join(', ')}`;
+    const err = new Error(msg);
+    err.status = 500;
+    throw err;
   }
   const url = `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(
     hostname
