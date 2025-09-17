@@ -1,0 +1,317 @@
+openapi: 3.1.0
+info:
+  title: Excel GPT Middleware API
+  version: 1.0.0
+  description: |
+    Serverless Express endpoints for interacting with Microsoft Graph Excel via a middleware.
+    All endpoints respond with a consistent envelope: { success: boolean, data?: any, error?: string }.
+servers:
+  - url: https://your-deployment-url.com
+    description: Production
+  - url: http://localhost:3000
+    description: Local (vercel dev or local server)
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSuccess'
+  /excel/read:
+    post:
+      summary: Read a range from a worksheet
+      operationId: readExcelRange
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReadRequest'
+            examples:
+              byNames:
+                summary: Using driveName/itemName and sheet-qualified range
+                value:
+                  driveName: Shared Documents
+                  itemName: TestWorkbook.xlsx
+                  range: Sheet1!A1:D10
+              byIds:
+                summary: Using driveId/itemId/worksheetId
+                value:
+                  driveId: YOUR_DRIVE_ID
+                  itemId: YOUR_ITEM_ID
+                  worksheetId: YOUR_WORKSHEET_ID
+                  range: A1:D10
+      responses:
+        '200':
+          description: Read success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSuccess'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '500':
+          description: Server or Graph error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+  /excel/write:
+    post:
+      summary: Write values to a range in a worksheet
+      operationId: writeExcelRange
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WriteRequest'
+            examples:
+              byNames:
+                summary: Using driveName/itemName and sheet-qualified range
+                value:
+                  driveName: Shared Documents
+                  itemName: TestWorkbook.xlsx
+                  range: Sheet1!A1:B2
+                  values:
+                    - ["Date", "Amount"]
+                    - ["2025-09-01", 100]
+              byIds:
+                summary: Using driveId/itemId/worksheetId
+                value:
+                  driveId: YOUR_DRIVE_ID
+                  itemId: YOUR_ITEM_ID
+                  worksheetId: YOUR_WORKSHEET_ID
+                  range: A1:B2
+                  values:
+                    - [1, 2]
+                    - [3, 4]
+      responses:
+        '200':
+          description: Write success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSuccess'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '500':
+          description: Server or Graph error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+  /excel/add-sheet:
+    post:
+      summary: Add a worksheet to a workbook
+      operationId: addWorksheet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddSheetRequest'
+            examples:
+              byNames:
+                value:
+                  driveName: Shared Documents
+                  itemName: TestWorkbook.xlsx
+                  sheetName: NewSheet
+              byIds:
+                value:
+                  driveId: YOUR_DRIVE_ID
+                  itemId: YOUR_ITEM_ID
+                  sheetName: NewSheet
+      responses:
+        '200':
+          description: Add sheet success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSuccess'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '500':
+          description: Server or Graph error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+  /excel/delete:
+    post:
+      summary: Clear data in a range
+      operationId: clearRange
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteRequest'
+            examples:
+              byNames:
+                value:
+                  driveName: Shared Documents
+                  itemName: TestWorkbook.xlsx
+                  sheetName: Sheet1
+                  range: A1:B10
+                  applyTo: contents
+              byIds:
+                value:
+                  driveId: YOUR_DRIVE_ID
+                  itemId: YOUR_ITEM_ID
+                  sheetName: Sheet1
+                  range: A1:B10
+                  applyTo: contents
+      responses:
+        '200':
+          description: Clear success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSuccess'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '500':
+          description: Server or Graph error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+components:
+  schemas:
+    EnvelopeSuccess:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          description: Response payload from the middleware or Graph API
+    EnvelopeError:
+      type: object
+      properties:
+        success:
+          type: boolean
+          const: false
+        error:
+          type: string
+    ReadRequest:
+      type: object
+      description: Provide either driveId+itemId or driveName+itemName. Worksheet can be specified via worksheetId/worksheetName or as a Sheet! prefix in range.
+      properties:
+        driveId:
+          type: string
+          description: OneDrive/SharePoint drive ID containing the workbook
+        itemId:
+          type: string
+          description: Drive item ID of the Excel file
+        driveName:
+          type: string
+          description: Drive name (e.g., Shared Documents)
+        itemName:
+          type: string
+          description: File name (e.g., TestWorkbook.xlsx)
+        worksheetId:
+          type: string
+          description: Worksheet ID
+        worksheetName:
+          type: string
+          description: Worksheet name; if omitted, you can prefix the range like Sheet1!A1:D10
+        range:
+          type: string
+          description: Range address such as A1:C10 or Sheet1!A1:C10
+      required: [range]
+    WriteRequest:
+      type: object
+      description: Provide either driveId+itemId or driveName+itemName. Worksheet can be specified via worksheetId/worksheetName or as a Sheet! prefix in range.
+      properties:
+        driveId:
+          type: string
+        itemId:
+          type: string
+        driveName:
+          type: string
+        itemName:
+          type: string
+        worksheetId:
+          type: string
+        worksheetName:
+          type: string
+        range:
+          type: string
+        values:
+          type: array
+          description: 2D array of values to write
+          items:
+            type: array
+            items: {}
+      required: [range, values]
+    AddSheetRequest:
+      type: object
+      properties:
+        driveId:
+          type: string
+        itemId:
+          type: string
+        driveName:
+          type: string
+        itemName:
+          type: string
+        sheetName:
+          type: string
+      required: [sheetName]
+      examples:
+        default:
+          value:
+            driveId: YOUR_DRIVE_ID
+            itemId: YOUR_ITEM_ID
+            sheetName: NewSheet
+    DeleteRequest:
+      type: object
+      properties:
+        driveId:
+          type: string
+        itemId:
+          type: string
+        driveName:
+          type: string
+        itemName:
+          type: string
+        sheetName:
+          type: string
+        range:
+          type: string
+        applyTo:
+          type: string
+          description: Defaults to 'contents'. Other options include 'formats', 'hyperLinks', etc.
+          default: contents
+      required: [sheetName, range]
+      examples:
+        default:
+          value:
+            driveId: YOUR_DRIVE_ID
+            itemId: YOUR_ITEM_ID
+            sheetName: Sheet1
+            range: A1:B10
+            applyTo: contents

@@ -8,72 +8,84 @@ const logger = require('../config/logger');
 
 // Common validation schemas
 const schemas = {
-    // Range validation schema
-    range: Joi.string().pattern(/^[A-Z]+\d+:[A-Z]+\d+$|^[A-Z]+\d+$|^[A-Z]+:[A-Z]+$|^\d+:\d+$/).required(),
+    // Range validation schema (supports optional Sheet! prefix)
+    // Examples: "A1:B2", "Sheet1!A1:D10"
+    range: Joi.string()
+        .pattern(/^(?:[^!\n\r]+!)?(?:[A-Z]+\d+:[A-Z]+\d+|[A-Z]+\d+|[A-Z]+:[A-Z]+|\d+:\d+)$/)
+        .required(),
     
     // Workbook ID validation
-    workbookId: Joi.string().min(1).max(255).required(),
+    workbookId: Joi.string().min(1).max(255),
     
     // Worksheet ID validation
-    worksheetId: Joi.string().min(1).max(255).required(),
+    worksheetId: Joi.string().min(1).max(255),
     
     // Drive ID validation
-    driveId: Joi.string().min(1).max(255).required(),
+    driveId: Joi.string().min(1).max(255),
+    
+    // Drive Name validation
+    driveName: Joi.string().min(1).max(255),
+    
+    // Item Name (file name) validation
+    itemName: Joi.string().min(1).max(255),
+    
+    // Worksheet Name validation
+    worksheetName: Joi.string().min(1).max(255),
     
     // Table name validation
-    tableName: Joi.string().min(1).max(255).required(),
+    tableName: Joi.string().min(1).max(255),
     
     // Values array validation (2D array)
-    values: Joi.array().items(Joi.array()).min(1).required(),
+    values: Joi.array().items(Joi.array()).min(1),
     
     // Single row validation
-    rows: Joi.array().items(Joi.array()).min(1).required(),
+    rows: Joi.array().items(Joi.array()).min(1),
     
     // User ID validation
     userId: Joi.string().email().optional()
 };
 
+// Helper to require either IDs or names
+const idOrName = Joi.alternatives().try(
+    Joi.object({ driveId: schemas.driveId.required(), itemId: schemas.workbookId.required() }),
+    Joi.object({ driveName: schemas.driveName.required(), itemName: schemas.itemName.required() })
+);
+
 // Request validation schemas
 const requestSchemas = {
     // Read range request
-    readRange: Joi.object({
-        driveId: schemas.driveId,
-        itemId: schemas.workbookId,
-        worksheetId: schemas.worksheetId,
-        range: schemas.range
-    }),
+    readRange: idOrName.concat(Joi.object({
+        // worksheet can be provided via worksheetId or worksheetName or inferred from range prefix
+        worksheetId: schemas.worksheetId.optional(),
+        worksheetName: schemas.worksheetName.optional(),
+        range: schemas.range.required()
+    })),
     
     // Write range request
-    writeRange: Joi.object({
-        driveId: schemas.driveId,
-        itemId: schemas.workbookId,
-        worksheetId: schemas.worksheetId,
-        range: schemas.range,
-        values: schemas.values
-    }),
+    writeRange: idOrName.concat(Joi.object({
+        worksheetId: schemas.worksheetId.optional(),
+        worksheetName: schemas.worksheetName.optional(),
+        range: schemas.range.required(),
+        values: schemas.values.required()
+    })),
     
     // Read table request
-    readTable: Joi.object({
-        driveId: schemas.driveId,
-        itemId: schemas.workbookId,
-        worksheetId: schemas.worksheetId,
-        tableName: schemas.tableName
-    }),
+    readTable: idOrName.concat(Joi.object({
+        worksheetId: schemas.worksheetId.optional(),
+        worksheetName: schemas.worksheetName.optional(),
+        tableName: schemas.tableName.required()
+    })),
     
     // Add table rows request
-    addTableRows: Joi.object({
-        driveId: schemas.driveId,
-        itemId: schemas.workbookId,
-        worksheetId: schemas.worksheetId,
-        tableName: schemas.tableName,
-        rows: schemas.rows
-    }),
+    addTableRows: idOrName.concat(Joi.object({
+        worksheetId: schemas.worksheetId.optional(),
+        worksheetName: schemas.worksheetName.optional(),
+        tableName: schemas.tableName.required(),
+        rows: schemas.rows.required()
+    })),
     
     // Get worksheets request
-    getWorksheets: Joi.object({
-        driveId: schemas.driveId,
-        itemId: schemas.workbookId
-    })
+    getWorksheets: idOrName
 };
 
 /**

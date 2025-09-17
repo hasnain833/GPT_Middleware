@@ -1,6 +1,7 @@
 // Excel Controller Handles HTTP requests for Excel operations
 
 const excelService = require("../services/excelService");
+const resolverService = require("../services/resolverService");
 const auditService = require("../services/auditService");
 const logger = require("../config/logger");
 const { catchAsync } = require("../middleware/errorHandler");
@@ -30,13 +31,22 @@ class ExcelController {
    * Get worksheets in a workbook
    */
   getWorksheets = catchAsync(async (req, res) => {
-    const { driveId, itemId } = req.query;
+    const { driveId, itemId, driveName, itemName } = req.query;
     const auditContext = auditService.createAuditContext(req);
+
+    // Resolve IDs if names are provided
+    let resolvedDriveId = driveId;
+    let resolvedItemId = itemId;
+
+    if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    }
 
     const worksheets = await excelService.getWorksheets(
       req.accessToken,
-      driveId,
-      itemId,
+      resolvedDriveId,
+      resolvedItemId,
       auditContext
     );
 
@@ -48,15 +58,36 @@ class ExcelController {
 
   // Read data from Excel range
   readRange = catchAsync(async (req, res) => {
-    const { driveId, itemId, worksheetId, range } = req.body;
+    const { driveId, itemId, driveName, itemName, worksheetId, worksheetName, range } = req.body;
     const auditContext = auditService.createAuditContext(req);
+
+    // Resolve driveId/itemId from names if needed
+    let resolvedDriveId = driveId;
+    let resolvedItemId = itemId;
+    if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    }
+
+    // Extract worksheet from range if provided like Sheet1!A1:D10
+    const { sheetName, address } = resolverService.parseSheetAndAddress(range);
+    let resolvedWorksheetId = worksheetId;
+    const effectiveWorksheetName = worksheetName || sheetName;
+    if (!resolvedWorksheetId && effectiveWorksheetName) {
+      resolvedWorksheetId = await resolverService.resolveWorksheetIdByName(
+        req.accessToken,
+        resolvedDriveId,
+        resolvedItemId,
+        effectiveWorksheetName
+      );
+    }
 
     const data = await excelService.readRange({
       accessToken: req.accessToken,
-      driveId,
-      itemId,
-      worksheetId,
-      range,
+      driveId: resolvedDriveId,
+      itemId: resolvedItemId,
+      worksheetId: resolvedWorksheetId,
+      range: address,
       auditContext,
     });
 
@@ -79,15 +110,36 @@ class ExcelController {
    * Write data to Excel range
    */
   writeRange = catchAsync(async (req, res) => {
-    const { driveId, itemId, worksheetId, range, values } = req.body;
+    const { driveId, itemId, driveName, itemName, worksheetId, worksheetName, range, values } = req.body;
     const auditContext = auditService.createAuditContext(req);
+
+    // Resolve drive/item
+    let resolvedDriveId = driveId;
+    let resolvedItemId = itemId;
+    if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    }
+
+    // Resolve worksheet and address
+    const { sheetName, address } = resolverService.parseSheetAndAddress(range);
+    let resolvedWorksheetId = worksheetId;
+    const effectiveWorksheetName = worksheetName || sheetName;
+    if (!resolvedWorksheetId && effectiveWorksheetName) {
+      resolvedWorksheetId = await resolverService.resolveWorksheetIdByName(
+        req.accessToken,
+        resolvedDriveId,
+        resolvedItemId,
+        effectiveWorksheetName
+      );
+    }
 
     const data = await excelService.writeRange({
       accessToken: req.accessToken,
-      driveId,
-      itemId,
-      worksheetId,
-      range,
+      driveId: resolvedDriveId,
+      itemId: resolvedItemId,
+      worksheetId: resolvedWorksheetId,
+      range: address,
       values,
       auditContext,
     });
@@ -109,14 +161,31 @@ class ExcelController {
    * Read data from Excel table
    */
   readTable = catchAsync(async (req, res) => {
-    const { driveId, itemId, worksheetId, tableName } = req.body;
+    const { driveId, itemId, driveName, itemName, worksheetId, worksheetName, tableName } = req.body;
     const auditContext = auditService.createAuditContext(req);
+
+    let resolvedDriveId = driveId;
+    let resolvedItemId = itemId;
+    if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    }
+
+    let resolvedWorksheetId = worksheetId;
+    if (!resolvedWorksheetId && worksheetName) {
+      resolvedWorksheetId = await resolverService.resolveWorksheetIdByName(
+        req.accessToken,
+        resolvedDriveId,
+        resolvedItemId,
+        worksheetName
+      );
+    }
 
     const data = await excelService.readTable({
       accessToken: req.accessToken,
-      driveId,
-      itemId,
-      worksheetId,
+      driveId: resolvedDriveId,
+      itemId: resolvedItemId,
+      worksheetId: resolvedWorksheetId,
       tableName,
       auditContext,
     });
@@ -144,14 +213,31 @@ class ExcelController {
    * Add rows to Excel table
    */
   addTableRows = catchAsync(async (req, res) => {
-    const { driveId, itemId, worksheetId, tableName, rows } = req.body;
+    const { driveId, itemId, driveName, itemName, worksheetId, worksheetName, tableName, rows } = req.body;
     const auditContext = auditService.createAuditContext(req);
+
+    let resolvedDriveId = driveId;
+    let resolvedItemId = itemId;
+    if ((!resolvedDriveId || !resolvedItemId) && (driveName && itemName)) {
+      resolvedDriveId = await resolverService.resolveDriveIdByName(req.accessToken, driveName);
+      resolvedItemId = await resolverService.resolveItemIdByName(req.accessToken, resolvedDriveId, itemName);
+    }
+
+    let resolvedWorksheetId = worksheetId;
+    if (!resolvedWorksheetId && worksheetName) {
+      resolvedWorksheetId = await resolverService.resolveWorksheetIdByName(
+        req.accessToken,
+        resolvedDriveId,
+        resolvedItemId,
+        worksheetName
+      );
+    }
 
     const result = await excelService.addTableRows({
       accessToken: req.accessToken,
-      driveId,
-      itemId,
-      worksheetId,
+      driveId: resolvedDriveId,
+      itemId: resolvedItemId,
+      worksheetId: resolvedWorksheetId,
       tableName,
       rows,
       auditContext,
