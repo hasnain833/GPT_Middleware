@@ -1,11 +1,13 @@
 {
   "name": "excel-gpt-middleware",
   "version": "1.0.0",
+  "type": "module",
   "description": "Secure middleware for connecting GPT to Excel files on SharePoint/OneDrive via Microsoft Graph API",
-  "main": "src/server.js",
+  "main": "api/index.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "vercel-dev": "vercel dev",
     "test": "jest",
     "lint": "eslint src/**/*.js"
   },
@@ -31,6 +33,7 @@
     "express-rate-limit": "^7.1.5",
     "helmet": "^7.1.0",
     "joi": "^17.11.0",
+    "node-fetch": "^3.3.2",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",
     "winston-daily-rotate-file": "^4.7.1"
@@ -42,6 +45,6 @@
     "supertest": "^6.3.3"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.18.0"
   }
 }
