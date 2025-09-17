@@ -116,3 +116,5 @@ Thumbs.db
 
 # Azure specific
 .azure/
+
+.vercel
