@@ -22,6 +22,35 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EnvelopeSuccess'
+  /list-drives:
+    get:
+      summary: List drives
+      operationId: listDrives
+      responses:
+        '200':
+          description: List success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSuccess'
+  /list-items:
+    get:
+      summary: List items in a drive
+      operationId: listItems
+      parameters:
+        - in: query
+          name: driveName
+          schema:
+            type: string
+          required: true
+          description: Drive name (e.g., Shared Documents)
+      responses:
+        '200':
+          description: List success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSuccess'
   /excel/read:
     post:
       summary: Read a range from a worksheet
@@ -39,13 +68,8 @@ paths:
                   driveName: Shared Documents
                   itemName: TestWorkbook.xlsx
                   range: Sheet1!A1:D10
-              byIds:
-                summary: Using driveId/itemId/worksheetId
-                value:
-                  driveId: YOUR_DRIVE_ID
-                  itemId: YOUR_ITEM_ID
-                  worksheetId: YOUR_WORKSHEET_ID
-                  range: A1:D10
+      description: |
+        Provide either driveName/itemName. Name matching is case-insensitive. If a name is not found, the API returns a 404 with an error listing available names.
       responses:
         '200':
           description: Read success
@@ -55,6 +79,12 @@ paths:
                 $ref: '#/components/schemas/EnvelopeSuccess'
         '400':
           description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '404':
+          description: Drive or file not found (returns available names)
           content:
             application/json:
               schema:
@@ -85,16 +115,8 @@ paths:
                   values:
                     - ["Date", "Amount"]
                     - ["2025-09-01", 100]
-              byIds:
-                summary: Using driveId/itemId/worksheetId
-                value:
-                  driveId: YOUR_DRIVE_ID
-                  itemId: YOUR_ITEM_ID
-                  worksheetId: YOUR_WORKSHEET_ID
-                  range: A1:B2
-                  values:
-                    - [1, 2]
-                    - [3, 4]
+      description: |
+        Provide either driveName/itemName. Name matching is case-insensitive. If a name is not found, the API returns a 404 with an error listing available names.
       responses:
         '200':
           description: Write success
@@ -114,36 +136,72 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EnvelopeError'
-  /excel/add-sheet:
+  /excel/create-sheet:
     post:
-      summary: Add a worksheet to a workbook
-      operationId: addWorksheet
+      summary: Create a worksheet in a workbook
+      operationId: createWorksheet
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/AddSheetRequest'
+              $ref: '#/components/schemas/CreateSheetRequest'
             examples:
               byNames:
                 value:
                   driveName: Shared Documents
                   itemName: TestWorkbook.xlsx
-                  sheetName: NewSheet
-              byIds:
-                value:
-                  driveId: YOUR_DRIVE_ID
-                  itemId: YOUR_ITEM_ID
-                  sheetName: NewSheet
+                  name: NewSheet
       responses:
         '200':
-          description: Add sheet success
+          description: Create sheet success
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/EnvelopeSuccess'
         '400':
           description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '500':
+          description: Server or Graph error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+  /excel/delete-sheet:
+    delete:
+      summary: Delete a worksheet by name
+      operationId: deleteWorksheet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteSheetRequest'
+            examples:
+              byNames:
+                value:
+                  driveName: Shared Documents
+                  itemName: TestWorkbook.xlsx
+                  sheetName: OldSheet
+      responses:
+        '200':
+          description: Delete sheet success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeSuccess'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EnvelopeError'
+        '404':
+          description: Not found
           content:
             application/json:
               schema:
@@ -169,13 +227,6 @@ paths:
                 value:
                   driveName: Shared Documents
                   itemName: TestWorkbook.xlsx
-                  sheetName: Sheet1
-                  range: A1:B10
-                  applyTo: contents
-              byIds:
-                value:
-                  driveId: YOUR_DRIVE_ID
-                  itemId: YOUR_ITEM_ID
                   sheetName: Sheet1
                   range: A1:B10
                   applyTo: contents
@@ -218,43 +269,28 @@ components:
           type: string
     ReadRequest:
       type: object
-      description: Provide either driveId+itemId or driveName+itemName. Worksheet can be specified via worksheetId/worksheetName or as a Sheet! prefix in range.
+      description: Provide driveName/itemName. Worksheet can be specified via worksheetName or as a Sheet! prefix in range.
       properties:
-        driveId:
-          type: string
-          description: OneDrive/SharePoint drive ID containing the workbook
-        itemId:
-          type: string
-          description: Drive item ID of the Excel file
         driveName:
           type: string
           description: Drive name (e.g., Shared Documents)
         itemName:
           type: string
           description: File name (e.g., TestWorkbook.xlsx)
-        worksheetId:
-          type: string
-          description: Worksheet ID
         worksheetName:
           type: string
           description: Worksheet name; if omitted, you can prefix the range like Sheet1!A1:D10
         range:
           type: string
           description: Range address such as A1:C10 or Sheet1!A1:C10
-      required: [range]
+      required: [driveName, itemName, range]
     WriteRequest:
       type: object
-      description: Provide either driveId+itemId or driveName+itemName. Worksheet can be specified via worksheetId/worksheetName or as a Sheet! prefix in range.
+      description: Provide driveName/itemName. Worksheet can be specified via worksheetName or as a Sheet! prefix in range.
       properties:
-        driveId:
-          type: string
-        itemId:
-          type: string
         driveName:
           type: string
         itemName:
-          type: string
-        worksheetId:
           type: string
         worksheetName:
           type: string
@@ -266,34 +302,24 @@ components:
           items:
             type: array
             items: {}
-      required: [range, values]
-    AddSheetRequest:
+      required: [driveName, itemName, range, values]
+    CreateSheetRequest:
       type: object
       properties:
-        driveId:
-          type: string
-        itemId:
-          type: string
         driveName:
           type: string
         itemName:
           type: string
-        sheetName:
+        name:
           type: string
-      required: [sheetName]
+      required: [driveName, itemName, name]
       examples:
-        default:
-          value:
-            driveId: YOUR_DRIVE_ID
-            itemId: YOUR_ITEM_ID
-            sheetName: NewSheet
+        - driveName: Documents
+          itemName: TestWorkbook.xlsx
+          name: NewSheet
     DeleteRequest:
       type: object
       properties:
-        driveId:
-          type: string
-        itemId:
-          type: string
         driveName:
           type: string
         itemName:
@@ -306,12 +332,20 @@ components:
           type: string
           description: Defaults to 'contents'. Other options include 'formats', 'hyperLinks', etc.
           default: contents
-      required: [sheetName, range]
+      required: [driveName, itemName, sheetName, range]
       examples:
-        default:
-          value:
-            driveId: YOUR_DRIVE_ID
-            itemId: YOUR_ITEM_ID
-            sheetName: Sheet1
-            range: A1:B10
-            applyTo: contents
+        - driveName: Documents
+          itemName: TestWorkbook.xlsx
+          sheetName: Sheet1
+          range: A1:B10
+          applyTo: contents
+    DeleteSheetRequest:
+      type: object
+      properties:
+        driveName:
+          type: string
+        itemName:
+          type: string
+        sheetName:
+          type: string
+      required: [driveName, itemName, sheetName]

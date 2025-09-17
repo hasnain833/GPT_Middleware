@@ -40,10 +40,12 @@ class ResolverService {
       const graphClient = this.createGraphClient(accessToken);
       const siteId = await excelService.getSiteId(graphClient);
       const drives = await excelService.getDrives(graphClient, siteId);
-      const match = drives.find((d) => d.name === driveName);
+      const available = (drives || []).map(d => d.name);
+      const driveNameLc = String(driveName).toLowerCase();
+      const match = (drives || []).find((d) => String(d.name).toLowerCase() === driveNameLc);
 
       if (!match) {
-        const msg = `Drive not found for name: ${driveName}`;
+        const msg = `Drive not found. Available drives: ${JSON.stringify(available)}`;
         logger.warn(msg);
         throw new AppError(msg, 404);
       }
@@ -75,9 +77,12 @@ class ResolverService {
         .top(999)
         .get();
 
-      const match = (resp.value || []).find((it) => it.name === itemName);
+      const items = resp.value || [];
+      const available = items.map(it => it.name);
+      const itemNameLc = String(itemName).toLowerCase();
+      const match = items.find((it) => String(it.name).toLowerCase() === itemNameLc);
       if (!match) {
-        const msg = `Item not found in drive for name: ${itemName}`;
+        const msg = `File not found in this drive. Available items: ${JSON.stringify(available)}`;
         logger.warn(msg, { driveId });
         throw new AppError(msg, 404);
       }

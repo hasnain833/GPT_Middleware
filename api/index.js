@@ -124,7 +124,12 @@ async function graphFetch(url, options = {}) {
   return data;
 }
 
-// Helpers to resolve driveId/itemId from names
+// Simple in-memory caches with 10-minute TTL
+const NAME_CACHE_TTL_MS = 10 * 60 * 1000;
+const driveCache = new Map(); // key: driveNameLower -> { id, ts }
+const itemCache = new Map();  // key: `${driveId}:${itemNameLower}` -> { id, ts }
+
+// Helpers to resolve driveId/itemId from names (case-insensitive)
 async function resolveSiteId() {
   const hostname = process.env.SHAREPOINT_HOSTNAME;
   const siteName = process.env.SHAREPOINT_SITE_NAME;
@@ -139,30 +144,84 @@ async function resolveSiteId() {
   return graphFetch(url, { method: "GET" });
 }
 
-async function resolveDriveIdByName(driveName) {
+async function listDrives() {
   const site = await resolveSiteId();
-  const siteId = site.id;
   const url = `https://graph.microsoft.com/v1.0/sites/${encodeURIComponent(
-    siteId
+    site.id
   )}/drives`;
   const data = await graphFetch(url, { method: "GET" });
-  const match = (data.value || []).find((d) => d.name === driveName);
-  if (!match) {
-    return null;
-  }
-  return match.id;
+  const drives = (data.value || []).map((d) => ({ id: d.id, name: d.name }));
+  return drives;
 }
 
-async function resolveItemIdByName(driveId, itemName) {
+async function resolveDriveIdByName(driveName) {
+  const key = String(driveName || "").toLowerCase();
+  const cached = driveCache.get(key);
+  if (cached && Date.now() - cached.ts < NAME_CACHE_TTL_MS) return cached.id;
+
+  const drives = await listDrives();
+  const match = drives.find((d) => String(d.name).toLowerCase() === key);
+  if (!match) return { id: null, available: drives.map((d) => d.name) };
+  driveCache.set(key, { id: match.id, ts: Date.now() });
+  return { id: match.id, available: drives.map((d) => d.name) };
+}
+
+async function listItems(driveId) {
   const url = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(
     driveId
   )}/root/children?$select=id,name&$top=999`;
   const data = await graphFetch(url, { method: "GET" });
-  const match = (data.value || []).find((it) => it.name === itemName);
-  if (!match) {
-    return null;
+  return (data.value || []).map((it) => ({ id: it.id, name: it.name }));
+}
+
+async function resolveItemIdByName(driveId, itemName) {
+  const key = `${driveId}:${String(itemName || "").toLowerCase()}`;
+  const cached = itemCache.get(key);
+  if (cached && Date.now() - cached.ts < NAME_CACHE_TTL_MS) return cached.id;
+
+  const items = await listItems(driveId);
+  const match = items.find((it) => String(it.name).toLowerCase() === String(itemName).toLowerCase());
+  if (!match) return { id: null, available: items.map((i) => i.name) };
+  itemCache.set(key, { id: match.id, ts: Date.now() });
+  return { id: match.id, available: items.map((i) => i.name) };
+}
+
+// Public helpers that throw with helpful messages
+async function resolveDriveId(driveName) {
+  const driveRes = await resolveDriveIdByName(driveName);
+  if (!driveRes.id) {
+    const list = JSON.stringify(driveRes.available || []);
+    const err = new Error(`Drive not found. Available drives: ${list}`);
+    err.status = 404;
+    throw err;
   }
-  return match.id;
+  return driveRes.id;
+}
+
+async function resolveItemId(driveId, itemName) {
+  const itemRes = await resolveItemIdByName(driveId, itemName);
+  if (!itemRes.id) {
+    const list = JSON.stringify(itemRes.available || []);
+    const err = new Error(`File not found in this drive. Available items: ${list}`);
+    err.status = 404;
+    throw err;
+  }
+  return itemRes.id;
+}
+
+// Worksheets helpers
+async function listWorksheets(driveId, itemId) {
+  const base = buildWorkbookBase({ driveId, itemId });
+  const url = `${base}/worksheets`;
+  const data = await graphFetch(url, { method: "GET" });
+  return (data.value || []).map((ws) => ({ id: ws.id, name: ws.name }));
+}
+
+async function resolveWorksheetIdByName(driveId, itemId, sheetName) {
+  const key = String(sheetName || "").toLowerCase();
+  const sheets = await listWorksheets(driveId, itemId);
+  const match = sheets.find((ws) => String(ws.name).toLowerCase() === key);
+  return match?.id || null;
 }
 
 function parseSheetAndAddress(range) {
@@ -175,29 +234,19 @@ function parseSheetAndAddress(range) {
 }
 
 // POST /excel/read
-// Body: supports either { driveId, itemId, sheetName, range } or { driveName, itemName, range (optionally Sheet!A1:B2) }
+// Body: { driveName, itemName, range (optionally Sheet!A1:B2) }
 app.post("/excel/read", async (req, res) => {
   try {
-    let { driveId, itemId, driveName, itemName, sheetName, range } = req.body || {};
-    if ((!driveId || !itemId) && (driveName && itemName)) {
-      const resolvedDriveId = await resolveDriveIdByName(driveName);
-      if (!resolvedDriveId) {
-        return res.status(404).json({ success: false, error: `Drive not found: ${driveName}` });
-      }
-      const resolvedItemId = await resolveItemIdByName(resolvedDriveId, itemName);
-      if (!resolvedItemId) {
-        return res.status(404).json({ success: false, error: `Item not found: ${itemName}` });
-      }
-      driveId = resolvedDriveId;
-      itemId = resolvedItemId;
-    }
-
-    if (!driveId || !itemId || !range) {
+    let { driveName, itemName, sheetName, range } = req.body || {};
+    if (!driveName || !itemName || !range) {
       return res.status(400).json({
         success: false,
-        error: "Missing body. Required: (driveId+itemId) or (driveName+itemName), and range",
+        error: "Missing body. Required: driveName, itemName, range",
       });
     }
+
+    const driveId = await resolveDriveId(driveName);
+    const itemId = await resolveItemId(driveId, itemName);
 
     // Support Sheet!A1:B2
     const parsed = parseSheetAndAddress(range);
@@ -219,34 +268,24 @@ app.post("/excel/read", async (req, res) => {
 });
 
 // POST /excel/write
-// Body: supports ids or names; range may be sheet-qualified; values is 2D array
+// Body: { driveName, itemName, range (may be Sheet!A1:B2), values (2D array) }
 app.post("/excel/write", async (req, res) => {
   try {
-    let { driveId, itemId, driveName, itemName, sheetName, range, values } = req.body || {};
-    if ((!driveId || !itemId) && (driveName && itemName)) {
-      const resolvedDriveId = await resolveDriveIdByName(driveName);
-      if (!resolvedDriveId) {
-        return res.status(404).json({ success: false, error: `Drive not found: ${driveName}` });
-      }
-      const resolvedItemId = await resolveItemIdByName(resolvedDriveId, itemName);
-      if (!resolvedItemId) {
-        return res.status(404).json({ success: false, error: `Item not found: ${itemName}` });
-      }
-      driveId = resolvedDriveId;
-      itemId = resolvedItemId;
-    }
-
+    let { driveName, itemName, sheetName, range, values } = req.body || {};
     const parsed = parseSheetAndAddress(range);
     if (parsed.sheetName && !sheetName) sheetName = parsed.sheetName;
     const address = parsed.address;
 
-    if (!driveId || !itemId || !sheetName || !address || !Array.isArray(values)) {
+    if (!driveName || !itemName || !sheetName || !address || !Array.isArray(values)) {
       return res.status(400).json({
         success: false,
         error:
-          "Missing body. Required: (driveId+itemId) or (driveName+itemName), sheetName (or prefix range), range, values(2D array)",
+          "Missing body. Required: driveName, itemName, sheetName (or prefix range), range, values(2D array)",
       });
     }
+
+    const driveId = await resolveDriveId(driveName);
+    const itemId = await resolveItemId(driveId, itemName);
 
     const base = buildWorkbookBase({ driveId, itemId });
     const url = `${base}/worksheets('${encodeURIComponent(
@@ -258,82 +297,53 @@ app.post("/excel/write", async (req, res) => {
     });
     return res.json({ success: true, data });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    const status = err.status || 500;
+    return res.status(status).json({ success: false, error: err.message });
   }
 });
 
-// POST /excel/add-sheet
-// Body: supports ids or names
-app.post("/excel/add-sheet", async (req, res) => {
+// POST /excel/create-sheet
+// Body: { driveName, itemName, name }
+app.post("/excel/create-sheet", async (req, res) => {
   try {
-    let { driveId, itemId, driveName, itemName, sheetName } = req.body || {};
-    if ((!driveId || !itemId) && (driveName && itemName)) {
-      const resolvedDriveId = await resolveDriveIdByName(driveName);
-      if (!resolvedDriveId) {
-        return res.status(404).json({ success: false, error: `Drive not found: ${driveName}` });
-      }
-      const resolvedItemId = await resolveItemIdByName(resolvedDriveId, itemName);
-      if (!resolvedItemId) {
-        return res.status(404).json({ success: false, error: `Item not found: ${itemName}` });
-      }
-      driveId = resolvedDriveId;
-      itemId = resolvedItemId;
-    }
-
-    if (!driveId || !itemId || !sheetName) {
+    const { driveName, itemName, name } = req.body || {};
+    if (!driveName || !itemName || !name) {
       return res.status(400).json({
         success: false,
-        error: "Missing body. Required: driveId, itemId, sheetName",
+        error: "Missing body. Required: driveName, itemName, name",
       });
     }
 
+    const driveId = await resolveDriveId(driveName);
+    const itemId = await resolveItemId(driveId, itemName);
     const base = buildWorkbookBase({ driveId, itemId });
     const url = `${base}/worksheets/add`;
     const data = await graphFetch(url, {
       method: "POST",
-      body: JSON.stringify({ name: sheetName }),
+      body: JSON.stringify({ name }),
     });
     return res.json({ success: true, data });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    const status = err.status || 500;
+    return res.status(status).json({ success: false, error: err.message });
   }
 });
 
 // POST /excel/delete
 // Clears data in a range
-// Body: supports ids or names; applyTo defaults to 'contents'
+// Body: { driveName, itemName, sheetName, range, applyTo? }
 app.post("/excel/delete", async (req, res) => {
   try {
-    let {
-      driveId,
-      itemId,
-      driveName,
-      itemName,
-      sheetName,
-      range,
-      applyTo = "contents",
-    } = req.body || {};
-
-    if ((!driveId || !itemId) && (driveName && itemName)) {
-      const resolvedDriveId = await resolveDriveIdByName(driveName);
-      if (!resolvedDriveId) {
-        return res.status(404).json({ success: false, error: `Drive not found: ${driveName}` });
-      }
-      const resolvedItemId = await resolveItemIdByName(resolvedDriveId, itemName);
-      if (!resolvedItemId) {
-        return res.status(404).json({ success: false, error: `Item not found: ${itemName}` });
-      }
-      driveId = resolvedDriveId;
-      itemId = resolvedItemId;
-    }
-
-    if (!driveId || !itemId || !sheetName || !range) {
+    let { driveName, itemName, sheetName, range, applyTo = "contents" } = req.body || {};
+    if (!driveName || !itemName || !sheetName || !range) {
       return res.status(400).json({
         success: false,
-        error: "Missing body. Required: driveId, itemId, sheetName, range",
+        error: "Missing body. Required: driveName, itemName, sheetName, range",
       });
     }
 
+    const driveId = await resolveDriveId(driveName);
+    const itemId = await resolveItemId(driveId, itemName);
     const base = buildWorkbookBase({ driveId, itemId });
     const url = `${base}/worksheets('${encodeURIComponent(
       sheetName
@@ -344,7 +354,35 @@ app.post("/excel/delete", async (req, res) => {
     });
     return res.json({ success: true, data });
   } catch (err) {
-    return res.status(500).json({ success: false, error: err.message });
+    const status = err.status || 500;
+    return res.status(status).json({ success: false, error: err.message });
+  }
+});
+
+// DELETE /excel/delete-sheet
+// Body: { driveName, itemName, sheetName }
+app.delete("/excel/delete-sheet", async (req, res) => {
+  try {
+    const { driveName, itemName, sheetName } = req.body || {};
+    if (!driveName || !itemName || !sheetName) {
+      return res.status(400).json({ success: false, error: "Missing body. Required: driveName, itemName, sheetName" });
+    }
+    const driveId = await resolveDriveId(driveName);
+    const itemId = await resolveItemId(driveId, itemName);
+    const worksheetId = await resolveWorksheetIdByName(driveId, itemId, sheetName);
+    if (!worksheetId) {
+      // fetch available worksheets for helpful error
+      const sheets = await listWorksheets(driveId, itemId);
+      const available = JSON.stringify(sheets.map(s => s.name));
+      return res.status(404).json({ success: false, error: `Worksheet not found. Available sheets: ${available}` });
+    }
+    const base = buildWorkbookBase({ driveId, itemId });
+    const url = `${base}/worksheets/${encodeURIComponent(worksheetId)}`;
+    await graphFetch(url, { method: "DELETE" });
+    return res.json({ success: true });
+  } catch (err) {
+    const status = err.status || 500;
+    return res.status(status).json({ success: false, error: err.message });
   }
 });
 
